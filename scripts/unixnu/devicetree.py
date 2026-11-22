@@ -321,6 +321,19 @@ def generate(dtb, config, *, unique_chip_id=None, data=False, trust=False, addon
         if not 0x10000000 <= size <= 0x200000000 or size % 0x200000:
             raise Error('Owned memory must be 256 MiB to 8 GiB in 2 MiB steps')
         chosen.append(('darwinboot-memory-size', struct.pack('<Q', size)))
+        # The loader fills this table with the ranges of the window XNU must not use
+        # (DarwinBoot MemoryWindow.h). Its presence switches DarwinBoot from AllocateWindow,
+        # which takes one whole contiguous run and then reports the full window as usable, to
+        # AllocateSpan, which allocates only the head and records the rest as excluded. Excluded
+        # covers memory the final UEFI map does not describe as free, gaps between DRAM banks
+        # included, along with boot-services memory.
+        #
+        # A board whose DRAM is not one run needs it: the window spans holes, XNU would page
+        # them, and the first touch answers with a synchronous external abort (ESR DFSC=0x10).
+        # The property must be present, a multiple of 16 bytes and all zero, or the tree is
+        # rejected. Sixteen slots hold sixteen (base, size) pairs; when a window has more, the
+        # loader merges the neighbours with the least usable memory rather than dropping one.
+        chosen.append(('darwinboot-memory-excluded', bytes(16 * 16)))
     if options.get('root_match_volume_uuid'):
         volume = str(uuid.UUID(options['root_match_volume_uuid'])).upper()
         chosen.append(('root-matching', ('<dict><key>IOProviderClass</key><string>IOMedia</string>'
