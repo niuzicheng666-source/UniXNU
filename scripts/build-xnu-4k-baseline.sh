@@ -80,10 +80,12 @@ if [ "$BOOT_PROGRESS" != 0 ] && [ "$BOOT_PROGRESS" != 1 ]; then
   exit 1
 fi
 if [ "$BOOT_PROGRESS" = 1 ]; then
-  # The board diagnostics use the UFS/owner-root paths; they do not touch the Virtio block driver.
-  if [ "${XNU_NATIVE_UFS:-0}" != 1 ] || [ "${XNU_OWNER_ROOT_AUDIT:-0}" != 1 ] || \
-     [ "${XNU_SOURCE_CORECRYPTO14:-0}" != 1 ]; then
-    echo 'Boot progress requires the audited UFS/owner-root and source-corecrypto build' >&2
+  # The board diagnostics read the block counters and the owner-root decision, so they need a storage path that
+  # publishes both. Two qualify: the iOS 17 UFS personality (XNU_NATIVE_UFS) and the source storage adapter the
+  # 26/27 profiles use (XNU_SOURCE_STORAGE). The diagnostics do not touch the Virtio block driver.
+  if { [ "${XNU_NATIVE_UFS:-0}" != 1 ] && [ "${XNU_SOURCE_STORAGE:-0}" != 1 ]; } || \
+     [ "${XNU_OWNER_ROOT_AUDIT:-0}" != 1 ] || [ "${XNU_SOURCE_CORECRYPTO14:-0}" != 1 ]; then
+    echo 'Boot progress requires the audited UFS or source-storage owner-root and source-corecrypto build' >&2
     exit 1
   fi
   python3 scripts/build-boot-progress.py
