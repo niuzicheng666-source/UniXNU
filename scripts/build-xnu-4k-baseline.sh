@@ -75,6 +75,24 @@ if [ "$BOOTSTRAP" != 0 ] && [ "$BOOTSTRAP" != 1 ]; then
   exit 1
 fi
 BOOT_PROGRESS=${XNU_BOOT_PROGRESS:-0}
+
+# --- boot progress probe: why libBootProgress.a is or is not produced -------------------------
+# The dump step shows the last lines of a log, so the reasons a build skipped this layer were
+# invisible. This writes one line to a fixed path and repeats it on stdout.
+BP_PROBE="$PWD/build/boot-progress-probe.txt"
+{
+  printf 'BOOT_PROGRESS=%s\n' "$BOOT_PROGRESS"
+  printf 'XNU_NATIVE_UFS=%s\n' "${XNU_NATIVE_UFS:-0}"
+  printf 'XNU_SOURCE_STORAGE=%s\n' "${XNU_SOURCE_STORAGE:-0}"
+  printf 'XNU_OWNER_ROOT_AUDIT=%s\n' "${XNU_OWNER_ROOT_AUDIT:-0}"
+  printf 'XNU_SOURCE_CORECRYPTO14=%s\n' "${XNU_SOURCE_CORECRYPTO14:-0}"
+  printf 'XNU_BOOTSTRAP=%s\n' "${XNU_BOOTSTRAP:-0}"
+  printf 'builder=%s\n' "$ROOT/scripts/build-boot-progress.py"
+  if [ -f "$ROOT/scripts/build-boot-progress.py" ]; then printf 'builder_present=yes\n'
+  else printf 'builder_present=no\n'; fi
+} > "$BP_PROBE" 2>/dev/null || true
+sed 's/^/boot-progress-probe: /' "$BP_PROBE" 2>/dev/null || true
+# ---------------------------------------------------------------------------------------------
 if [ "$BOOT_PROGRESS" != 0 ] && [ "$BOOT_PROGRESS" != 1 ]; then
   echo 'XNU_BOOT_PROGRESS must be 0 or 1' >&2
   exit 1
@@ -88,7 +106,15 @@ if [ "$BOOT_PROGRESS" = 1 ]; then
     echo 'Boot progress requires the audited UFS or source-storage owner-root and source-corecrypto build' >&2
     exit 1
   fi
-  python3 scripts/build-boot-progress.py
+  echo 'boot-progress-probe: gate passed, running build-boot-progress.py' | tee -a "$BP_PROBE" >&2 || true
+  # set -e would end the script before an exit status could be read, so capture it here and report
+  # it either way: a builder that fails is the remaining way the archive can be missing.
+  PROBE_RC=0
+  python3 scripts/build-boot-progress.py || PROBE_RC=$?
+  PROBE_ARCHIVE=no
+  [ -f "$ROOT/build/boot-progress/libBootProgress.a" ] && PROBE_ARCHIVE=yes
+  printf 'boot-progress-probe: builder_exit=%s archive=%s\n' "$PROBE_RC" "$PROBE_ARCHIVE" | tee -a "$BP_PROBE" >&2 || true
+  if [ "$PROBE_RC" != 0 ]; then exit "$PROBE_RC"; fi
 fi
 python3 - "$BOOT_PROGRESS" <<'PY'
 from pathlib import Path
