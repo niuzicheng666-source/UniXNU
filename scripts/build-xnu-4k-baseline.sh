@@ -77,8 +77,8 @@ fi
 BOOT_PROGRESS=${XNU_BOOT_PROGRESS:-0}
 
 # --- boot progress probe: why libBootProgress.a is or is not produced -------------------------
-# The dump step shows the last lines of a log, so the reasons a build skipped this layer were
-# invisible. This writes one line to a fixed path and repeats it on stdout.
+# The dump step shows only the last lines of a log, so a build that never entered this layer looked
+# the same as one that passed the gate. These lines go to a fixed path the job cats directly.
 BP_PROBE="$PWD/build/boot-progress-probe.txt"
 {
   printf 'BOOT_PROGRESS=%s\n' "$BOOT_PROGRESS"
@@ -87,7 +87,6 @@ BP_PROBE="$PWD/build/boot-progress-probe.txt"
   printf 'XNU_OWNER_ROOT_AUDIT=%s\n' "${XNU_OWNER_ROOT_AUDIT:-0}"
   printf 'XNU_SOURCE_CORECRYPTO14=%s\n' "${XNU_SOURCE_CORECRYPTO14:-0}"
   printf 'XNU_BOOTSTRAP=%s\n' "${XNU_BOOTSTRAP:-0}"
-  printf 'builder=%s\n' "$ROOT/scripts/build-boot-progress.py"
   if [ -f "$ROOT/scripts/build-boot-progress.py" ]; then printf 'builder_present=yes\n'
   else printf 'builder_present=no\n'; fi
 } > "$BP_PROBE" 2>/dev/null || true
@@ -106,9 +105,8 @@ if [ "$BOOT_PROGRESS" = 1 ]; then
     echo 'Boot progress requires the audited UFS or source-storage owner-root and source-corecrypto build' >&2
     exit 1
   fi
-  echo 'boot-progress-probe: gate passed, running build-boot-progress.py' | tee -a "$BP_PROBE" >&2 || true
-  # set -e would end the script before an exit status could be read, so capture it here and report
-  # it either way: a builder that fails is the remaining way the archive can be missing.
+  echo 'boot-progress-probe: gate passed' | tee -a "$BP_PROBE" >&2 || true
+  # set -e ends the script before an exit status can be read, so capture it and report either way.
   PROBE_RC=0
   python3 scripts/build-boot-progress.py || PROBE_RC=$?
   PROBE_ARCHIVE=no
